@@ -9,6 +9,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // CLI (migrate/generate) usa a conexão direta — mais confiável para DDL do que o pooler
+    url: process.env["DATABASE_URL_UNPOOLED"],
   },
 });
