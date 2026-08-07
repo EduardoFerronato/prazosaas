@@ -1,0 +1,243 @@
+// Schema do MVP — gestão de prazos processuais
+// Decisões de design (ver histórico de planejamento):
+// - Multi-tenant desde o MVP: Organization -> Membership -> User
+// - Soft delete (deletedAt) em entidades de domínio, nunca em logs (Event/Notification)
+// - Event é o log unificado: mesma fonte de dados alimenta Timeline (UI amigável) e Auditoria (view técnica)
+// - Deadline.calculationConfidence distingue prazo com cálculo certificado (comarca coberta)
+//   de prazo confirmado manualmente pelo usuário — nunca finge certeza que não existe
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum MembershipRole {
+  ADMIN
+  MEMBER
+}
+
+enum DeadlineStatus {
+  PENDING
+  COMPLETED
+  MISSED
+  CANCELED
+}
+
+/// Confiança do cálculo automático de prazo.
+/// CERTIFIED = comarca/tribunal está na cobertura certificada do motor de cálculo.
+/// MANUAL = fora da cobertura certificada; usuário confirmou a data manualmente.
+enum CalculationConfidence {
+  CERTIFIED
+  MANUAL
+}
+
+enum EventType {
+  PROCESS_CREATED
+  PROCESS_UPDATED
+  PROCESS_ARCHIVED
+  PROCESS_DELETED
+  DEADLINE_CREATED
+  DEADLINE_UPDATED
+  DEADLINE_COMPLETED
+  DEADLINE_MISSED
+  DEADLINE_CANCELED
+  DEADLINE_DELETED
+  MEMBER_INVITED
+  MEMBER_JOINED
+  MEMBER_ROLE_CHANGED
+  MEMBER_REMOVED
+}
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+// ---------- Modelos ----------
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships   Membership[]
+  processes     Process[]
+  deadlines     Deadline[]
+  events        Event[]
+  notifications Notification[]
+
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String
+  email           String    @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  image           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  memberships          Membership[]
+  passwordResetTokens  PasswordResetToken[]
+  processesResponsible Process[]           @relation("ProcessResponsible")
+  deadlinesResponsible Deadline[]          @relation("DeadlineResponsible")
+  eventsActed          Event[]             @relation("EventActor")
+  notifications        Notification[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Membership {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  userId         String         @db.Uuid
+  role           MembershipRole @default(MEMBER)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Process {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  number         String // número CNJ do processo
+  client         String
+  court          String // tribunal
+  county         String // comarca
+  type           String // tipo de ação
+  responsibleId  String?   @db.Uuid
+  notes          String?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  responsible  User?        @relation("ProcessResponsible", fields: [responsibleId], references: [id])
+  deadlines    Deadline[]
+  events       Event[]
+
+  // Sem unicidade rígida em (organizationId, number): soft delete permitiria reaproveitar
+  // o número de um processo excluído. Unicidade "ativa" é validada na camada de aplicação.
+  @@index([organizationId, number])
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, responsibleId])
+  @@map("processes")
+}
+
+model Deadline {
+  id                     String                @id @default(uuid()) @db.Uuid
+  organizationId         String                @db.Uuid
+  processId              String                @db.Uuid
+  responsibleId          String?               @db.Uuid
+  type                   String // tipo do prazo (ex: contestação, recurso)
+  legalBasis             String? // fundamento legal
+  intimationDate         DateTime // data da intimação/citação
+  days                   Int // quantidade de dias do prazo
+  dueDate                DateTime // data de vencimento calculada
+  calculationConfidence  CalculationConfidence @default(MANUAL)
+  status                 DeadlineStatus        @default(PENDING)
+  completedAt            DateTime?
+  notes                  String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  deletedAt              DateTime?
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  process       Process        @relation(fields: [processId], references: [id], onDelete: Cascade)
+  responsible   User?          @relation("DeadlineResponsible", fields: [responsibleId], references: [id])
+  events        Event[]
+  notifications Notification[]
+
+  @@index([organizationId, status, dueDate])
+  @@index([processId])
+  @@index([responsibleId])
+  @@map("deadlines")
+}
+
+/// Log de eventos unificado: alimenta a Timeline (visão amigável por processo)
+/// e a Auditoria (visão técnica completa por organização). Nunca sofre soft delete.
+model Event {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  actorId        String?   @db.Uuid // null = ação automática do sistema
+  type           EventType
+  processId      String?   @db.Uuid
+  deadlineId     String?   @db.Uuid
+  metadata       Json? // snapshot before/after para auditoria detalhada
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("EventActor", fields: [actorId], references: [id])
+  process      Process?     @relation(fields: [processId], references: [id], onDelete: Cascade)
+  deadline     Deadline?    @relation(fields: [deadlineId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([processId])
+  @@index([deadlineId])
+  @@map("events")
+}
+
+model Notification {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @db.Uuid
+  userId         String              @db.Uuid
+  deadlineId     String?             @db.Uuid
+  channel        NotificationChannel
+  status         NotificationStatus  @default(PENDING)
+  subject        String
+  body           String
+  sentAt         DateTime?
+  readAt         DateTime?
+  failReason     String?
+  escalatedAt    DateTime? // quando disparou notificação de escalonamento (responsável não confirmou leitura)
+  createdAt      DateTime            @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deadline     Deadline?    @relation(fields: [deadlineId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([deadlineId])
+  @@map("notifications")
+}
