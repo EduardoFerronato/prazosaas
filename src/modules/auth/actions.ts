@@ -2,29 +2,32 @@
 
 import { randomBytes, createHash } from "node:crypto"
 import bcrypt from "bcryptjs"
+import { revalidatePath } from "next/cache"
 
 import type { Prisma } from "@/generated/prisma/client"
 import { CredentialsSignin } from "next-auth"
 import { db } from "@/lib/db"
 import { signIn } from "@/lib/auth"
+import { requireSession } from "@/lib/session"
+import type { ActionResult } from "@/lib/action-result"
 import { sendEmail } from "@/modules/notifications/send"
 import {
   loginSchema,
   registerSchema,
   requestPasswordResetSchema,
   resetPasswordSchema,
+  updateProfileSchema,
+  changePasswordSchema,
   type LoginInput,
   type RegisterInput,
   type RequestPasswordResetInput,
   type ResetPasswordInput,
+  type UpdateProfileInput,
+  type ChangePasswordInput,
 } from "@/modules/auth/schemas"
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hora
 const BCRYPT_COST = 12
-
-export type ActionResult<T = undefined> =
-  | { success: true; data: T }
-  | { success: false; error: string }
 
 export async function registerAction(input: RegisterInput): Promise<ActionResult> {
   const parsed = registerSchema.safeParse(input)
@@ -143,6 +146,42 @@ export async function resetPasswordAction(input: ResetPasswordInput): Promise<Ac
     db.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
     db.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
   ])
+
+  return { success: true, data: undefined }
+}
+
+export async function updateProfileAction(input: UpdateProfileInput): Promise<ActionResult> {
+  const session = await requireSession()
+  const parsed = updateProfileSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos" }
+  }
+
+  await db.user.update({
+    where: { id: session.user.id },
+    data: { name: parsed.data.name },
+  })
+
+  revalidatePath("/", "layout")
+
+  return { success: true, data: undefined }
+}
+
+export async function changePasswordAction(input: ChangePasswordInput): Promise<ActionResult> {
+  const session = await requireSession()
+  const parsed = changePasswordSchema.safeParse(input)
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos" }
+  }
+
+  const user = await db.user.findUniqueOrThrow({ where: { id: session.user.id } })
+  const currentPasswordMatches = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash)
+  if (!currentPasswordMatches) {
+    return { success: false, error: "Senha atual incorreta" }
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, BCRYPT_COST)
+  await db.user.update({ where: { id: session.user.id }, data: { passwordHash } })
 
   return { success: true, data: undefined }
 }

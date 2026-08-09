@@ -1,12 +1,17 @@
 import type { Metadata } from "next"
-import { DataTable } from "@/components/shared/data-table"
 import { listDeadlines } from "@/modules/deadlines/queries"
-import { deadlineColumns } from "@/modules/deadlines/columns"
+import { listProcessOptions } from "@/modules/processes/queries"
+import { listOrganizationMembers } from "@/modules/organizations/queries"
+import { DeadlinesTable } from "@/modules/deadlines/components/deadlines-table"
 
 export const metadata: Metadata = { title: "Prazos" }
 
 export default async function DeadlinesPage() {
-  const deadlines = await listDeadlines()
+  const [deadlines, processes, members] = await Promise.all([
+    listDeadlines(),
+    listProcessOptions(),
+    listOrganizationMembers(),
+  ])
 
   return (
     <div className="space-y-6">
@@ -15,14 +20,11 @@ export default async function DeadlinesPage() {
         <p className="text-muted-foreground text-sm">
           {deadlines.length} prazo{deadlines.length === 1 ? "" : "s"} cadastrado
           {deadlines.length === 1 ? "" : "s"}.
+          {processes.length === 0 ? " Cadastre um processo antes de criar prazos." : ""}
         </p>
       </div>
 
-      <DataTable
-        columns={deadlineColumns}
-        data={deadlines}
-        emptyMessage="Nenhum prazo cadastrado ainda."
-      />
+      <DeadlinesTable deadlines={deadlines} processes={processes} members={members} />
     </div>
   )
 }

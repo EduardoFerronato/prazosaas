@@ -1,12 +1,12 @@
 import type { Metadata } from "next"
-import { DataTable } from "@/components/shared/data-table"
 import { listProcesses } from "@/modules/processes/queries"
-import { processColumns } from "@/modules/processes/columns"
+import { listOrganizationMembers } from "@/modules/organizations/queries"
+import { ProcessesTable } from "@/modules/processes/components/processes-table"
 
 export const metadata: Metadata = { title: "Processos" }
 
 export default async function ProcessesPage() {
-  const processes = await listProcesses()
+  const [processes, members] = await Promise.all([listProcesses(), listOrganizationMembers()])
 
   return (
     <div className="space-y-6">
@@ -18,11 +18,7 @@ export default async function ProcessesPage() {
         </p>
       </div>
 
-      <DataTable
-        columns={processColumns}
-        data={processes}
-        emptyMessage="Nenhum processo cadastrado ainda."
-      />
+      <ProcessesTable processes={processes} members={members} />
     </div>
   )
 }

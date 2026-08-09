@@ -1,5 +1,7 @@
-import { LogOut } from "lucide-react"
-import { auth, signOut } from "@/lib/auth"
+import Link from "next/link"
+import { Settings, LogOut } from "lucide-react"
+import { signOut } from "@/lib/auth"
+import { getCurrentUser } from "@/modules/auth/queries"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,24 +23,26 @@ function initials(name: string) {
 }
 
 export async function Topbar() {
-  const session = await auth()
-  const user = session?.user
+  const user = await getCurrentUser()
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-end border-b px-6">
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" className="h-9 gap-2 px-2" />}>
           <Avatar className="size-7">
-            <AvatarFallback className="text-xs">
-              {user?.name ? initials(user.name) : "?"}
-            </AvatarFallback>
+            <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
           </Avatar>
-          <span className="text-sm font-medium">{user?.name}</span>
+          <span className="text-sm font-medium">{user.name}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-            {user?.email}
+            {user.email}
           </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem render={<Link href="/configuracoes" />}>
+            <Settings className="size-4" />
+            Perfil e configurações
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <form
             action={async () => {

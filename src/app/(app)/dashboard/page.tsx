@@ -4,24 +4,25 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarClock, Clock, AlertTriangle, CheckCircle2 } from "lucide-react"
 
-import { auth } from "@/lib/auth"
+import { getCurrentUser } from "@/modules/auth/queries"
 import { getDeadlineCounts, listUpcomingDeadlines } from "@/modules/deadlines/queries"
 import { DeadlineStatusBadge } from "@/modules/deadlines/status-badge"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
 export default async function DashboardPage() {
-  const session = await auth()
-  const [counts, upcoming] = await Promise.all([getDeadlineCounts(), listUpcomingDeadlines()])
+  const [user, counts, upcoming] = await Promise.all([
+    getCurrentUser(),
+    getDeadlineCounts(),
+    listUpcomingDeadlines(),
+  ])
 
   const hasAnyDeadline = counts.pending + counts.missed + counts.completed > 0
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Olá, {session?.user?.name?.split(" ")[0]}
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Olá, {user.name.split(" ")[0]}</h1>
         <p className="text-muted-foreground text-sm">Aqui está o resumo dos seus prazos.</p>
       </div>
 
