@@ -66,6 +66,15 @@ enum NotificationStatus {
   READ
 }
 
+/// PENDING = encontrada no DJEN, aguardando revisão do advogado.
+/// IMPORTED = advogado confirmou e virou Processo/Prazo.
+/// DISMISSED = advogado descartou (não é relevante).
+enum DjenImportStatus {
+  PENDING
+  IMPORTED
+  DISMISSED
+}
+
 // ---------- Modelos ----------
 
 model Organization {
@@ -80,6 +89,7 @@ model Organization {
   deadlines     Deadline[]
   events        Event[]
   notifications Notification[]
+  djenImports   DjenImport[]
 
   @@index([deletedAt])
   @@map("organizations")
@@ -92,6 +102,9 @@ model User {
   passwordHash    String
   emailVerifiedAt DateTime?
   image           String?
+  oabNumber       String? // número da OAB, sem UF (ex: "123456")
+  oabUf           String? // UF da OAB (ex: "SP")
+  djenLastSyncAt  DateTime? // última vez que sincronizamos com a API do DJEN
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
@@ -102,6 +115,7 @@ model User {
   deadlinesResponsible Deadline[]          @relation("DeadlineResponsible")
   eventsActed          Event[]             @relation("EventActor")
   notifications        Notification[]
+  djenImports          DjenImport[]        @relation("DjenImportUser")
 
   @@index([deletedAt])
   @@map("users")
@@ -156,6 +170,7 @@ model Process {
   responsible  User?        @relation("ProcessResponsible", fields: [responsibleId], references: [id])
   deadlines    Deadline[]
   events       Event[]
+  djenImports  DjenImport[]
 
   // Sem unicidade rígida em (organizationId, number): soft delete permitiria reaproveitar
   // o número de um processo excluído. Unicidade "ativa" é validada na camada de aplicação.
@@ -240,4 +255,33 @@ model Notification {
   @@index([userId, status])
   @@index([deadlineId])
   @@map("notifications")
+}
+
+/// Comunicações (intimações/editais) encontradas na API pública do DJEN para a
+/// OAB de um usuário. Nunca vira Processo/Prazo sozinho — o advogado sempre
+/// revisa e confirma a importação (mesmo princípio do motor de cálculo: nunca
+/// fingir certeza que não existe).
+model DjenImport {
+  id                   String            @id @default(uuid()) @db.Uuid
+  organizationId       String            @db.Uuid
+  userId               String            @db.Uuid
+  processId            String?           @db.Uuid
+  djenHash             String            @unique // hash único da comunicação no DJEN
+  numeroProcesso       String
+  tribunal             String
+  orgao                String
+  tipoComunicacao      String
+  texto                String
+  dataDisponibilizacao DateTime
+  link                 String?
+  status               DjenImportStatus  @default(PENDING)
+  createdAt            DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("DjenImportUser", fields: [userId], references: [id], onDelete: Cascade)
+  process      Process?     @relation(fields: [processId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([userId])
+  @@map("djen_imports")
 }
