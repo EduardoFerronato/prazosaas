@@ -26,13 +26,15 @@ export async function Topbar() {
   const user = await getCurrentUser()
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-end border-b px-6">
+    <header className="flex h-16 shrink-0 items-center justify-end border-b px-6">
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" className="h-9 gap-2 px-2" />}>
-          <Avatar className="size-7">
-            <AvatarFallback className="text-xs">{initials(user.name)}</AvatarFallback>
+        <DropdownMenuTrigger render={<Button variant="ghost" className="h-10 gap-2.5 px-2" />}>
+          <Avatar className="size-8">
+            <AvatarFallback className="bg-blue-100 text-sm font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-400">
+              {initials(user.name)}
+            </AvatarFallback>
           </Avatar>
-          <span className="text-sm font-medium">{user.name}</span>
+          <span className="text-[15px] font-medium">{user.name}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">

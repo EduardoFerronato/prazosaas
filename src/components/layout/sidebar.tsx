@@ -16,13 +16,13 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="bg-sidebar text-sidebar-foreground hidden w-60 shrink-0 flex-col border-r px-3 py-4 md:flex">
-      <Link href="/dashboard" className="flex items-center gap-2 px-3 py-2 text-sm font-medium">
-        <ShieldCheck className="size-5" />
+    <aside className="bg-sidebar text-sidebar-foreground hidden w-64 shrink-0 flex-col border-r px-3 py-5 md:flex">
+      <Link href="/dashboard" className="flex items-center gap-2.5 px-3 py-2 text-base font-semibold">
+        <ShieldCheck className="size-6 text-blue-600 dark:text-blue-400" />
         <span>Prazo Certo</span>
       </Link>
 
-      <nav className="mt-6 flex flex-col gap-1">
+      <nav className="mt-8 flex flex-col gap-1">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname.startsWith(item.href)
           return (
@@ -30,13 +30,16 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "relative flex items-center gap-3 rounded-md px-3 py-2.5 text-[15px] font-medium transition-colors",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+                  ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
-              <item.icon className="size-4" />
+              {isActive ? (
+                <span className="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full bg-blue-600 dark:bg-blue-400" />
+              ) : null}
+              <item.icon className="size-[18px]" />
               {item.label}
             </Link>
           )
