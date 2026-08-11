@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -37,9 +38,11 @@ export async function Topbar() {
           <span className="text-[15px] font-medium">{user.name}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-            {user.email}
-          </DropdownMenuLabel>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+              {user.email}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem render={<Link href="/configuracoes" />}>
             <Settings className="size-4" />
@@ -52,7 +55,7 @@ export async function Topbar() {
               await signOut({ redirectTo: "/login" })
             }}
           >
-            <DropdownMenuItem render={<button type="submit" className="w-full" />}>
+            <DropdownMenuItem nativeButton render={<button type="submit" className="w-full" />}>
               <LogOut className="size-4" />
               Sair
             </DropdownMenuItem>
