@@ -1,108 +1,147 @@
 import type { Metadata } from "next"
-import Link from "next/link"
-import { format } from "date-fns"
+import { isToday, isThisWeek, differenceInCalendarDays, format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarClock, Clock, AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react"
+import { Clock, AlertTriangle, CheckCircle2, Gauge, CalendarClock } from "lucide-react"
 
 import { getCurrentUser } from "@/modules/auth/queries"
-import { getDeadlineCounts, listUpcomingDeadlines } from "@/modules/deadlines/queries"
-import { DeadlineStatusBadge } from "@/modules/deadlines/status-badge"
+import {
+  getDeadlineCounts,
+  listUpcomingDeadlines,
+  listOverdueDeadlines,
+} from "@/modules/deadlines/queries"
+import { listRecentEvents } from "@/modules/events/queries"
+import { listProcessOptions } from "@/modules/processes/queries"
+import { listOrganizationMembers } from "@/modules/organizations/queries"
+import { MetricCard } from "@/modules/dashboard/components/metric-card"
+import {
+  DeadlineGroupSection,
+  type DeadlineGroupItem,
+} from "@/modules/dashboard/components/deadline-group-section"
+import { ActivityFeed } from "@/modules/dashboard/components/activity-feed"
+import { NewDeadlineButton } from "@/modules/deadlines/components/new-deadline-button"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
-const STAT_CARDS = [
-  {
-    key: "pending" as const,
-    label: "Pendentes",
-    icon: Clock,
-    iconClassName: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400",
-  },
-  {
-    key: "missed" as const,
-    label: "Perdidos",
-    icon: AlertTriangle,
-    iconClassName: "bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400",
-  },
-  {
-    key: "completed" as const,
-    label: "Concluídos",
-    icon: CheckCircle2,
-    iconClassName: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400",
-  },
-]
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
 
 export default async function DashboardPage() {
-  const [user, counts, upcoming] = await Promise.all([
+  const [user, counts, upcoming, overdue, events, processes, members] = await Promise.all([
     getCurrentUser(),
     getDeadlineCounts(),
-    listUpcomingDeadlines(),
+    listUpcomingDeadlines(20),
+    listOverdueDeadlines(),
+    listRecentEvents(6),
+    listProcessOptions(),
+    listOrganizationMembers(),
   ])
 
   const hasAnyDeadline = counts.pending + counts.missed + counts.completed > 0
 
+  const overdueItems: DeadlineGroupItem[] = overdue.map((d) => {
+    const days = differenceInCalendarDays(new Date(), d.dueDate)
+    return {
+      id: d.id,
+      type: d.type,
+      processNumber: d.process.number,
+      processClient: d.process.client,
+      dueDate: d.dueDate,
+      status: d.status,
+      relativeLabel: days <= 0 ? "Hoje" : days === 1 ? "Há 1 dia" : `Há ${days} dias`,
+    }
+  })
+
+  const todayItems: DeadlineGroupItem[] = []
+  const thisWeekItems: DeadlineGroupItem[] = []
+  const laterItems: DeadlineGroupItem[] = []
+
+  for (const d of upcoming) {
+    const item: DeadlineGroupItem = {
+      id: d.id,
+      type: d.type,
+      processNumber: d.process.number,
+      processClient: d.process.client,
+      dueDate: d.dueDate,
+      status: d.status,
+    }
+
+    if (isToday(d.dueDate)) {
+      todayItems.push({ ...item, relativeLabel: "Hoje" })
+    } else if (isThisWeek(d.dueDate, { weekStartsOn: 1 })) {
+      thisWeekItems.push({ ...item, relativeLabel: capitalize(format(d.dueDate, "EEEE", { locale: ptBR })) })
+    } else {
+      laterItems.push(item)
+    }
+  }
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Olá, {user.name.split(" ")[0]}</h1>
-        <p className="text-muted-foreground mt-1 text-base">
-          Aqui está o resumo dos seus prazos.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Visão geral
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+            Olá, {user.name.split(" ")[0]}
+          </h1>
+        </div>
+        <NewDeadlineButton processes={processes} members={members} />
       </div>
 
       {hasAnyDeadline ? (
         <>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-            {STAT_CARDS.map((card) => (
-              <div
-                key={card.key}
-                className="bg-card flex items-center gap-4 rounded-xl border p-5"
-              >
-                <div
-                  className={`flex size-12 shrink-0 items-center justify-center rounded-full ${card.iconClassName}`}
-                >
-                  <card.icon className="size-6" />
-                </div>
-                <div>
-                  <p className="text-3xl font-semibold tabular-nums sm:text-4xl">
-                    {counts[card.key]}
-                  </p>
-                  <p className="text-muted-foreground text-sm">{card.label}</p>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              label="Pendentes"
+              value={counts.pending}
+              icon={Clock}
+              tone={counts.pending > 0 ? "info" : "neutral"}
+            />
+            <MetricCard
+              label="Perdidos"
+              value={counts.missed}
+              icon={AlertTriangle}
+              tone={counts.missed > 0 ? "danger" : "neutral"}
+            />
+            <MetricCard
+              label="Concluídos"
+              value={counts.completed}
+              icon={CheckCircle2}
+              tone={counts.completed > 0 ? "success" : "neutral"}
+            />
+            <MetricCard
+              label="Taxa de cumprimento"
+              value={counts.complianceRate === null ? "—" : `${counts.complianceRate}%`}
+              icon={Gauge}
+              tone="neutral"
+              subtext="prazos concluídos no prazo"
+            />
           </div>
 
-          <div>
-            <h2 className="mb-4 text-lg font-semibold tracking-tight">Próximos vencimentos</h2>
-            {upcoming.length ? (
-              <div className="divide-y rounded-xl border">
-                {upcoming.map((deadline) => (
-                  <Link
-                    key={deadline.id}
-                    href="/prazos"
-                    className="hover:bg-muted/50 group flex items-center justify-between gap-4 px-5 py-4 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-base font-medium">{deadline.type}</p>
-                      <p className="text-muted-foreground mt-0.5 truncate text-sm">
-                        {deadline.process.number} · {deadline.process.client}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-4">
-                      <span className="text-muted-foreground text-sm">
-                        {format(deadline.dueDate, "dd/MM/yyyy", { locale: ptBR })}
-                      </span>
-                      <DeadlineStatusBadge status={deadline.status} />
-                      <ChevronRight className="text-muted-foreground size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                    </div>
-                  </Link>
-                ))}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="rounded-xl border lg:col-span-2">
+              <div className="flex items-center justify-between px-5 pt-5">
+                <h2 className="text-lg font-semibold tracking-tight">Prazos</h2>
               </div>
-            ) : (
-              <p className="text-muted-foreground rounded-xl border border-dashed p-8 text-center text-base">
-                Nenhum prazo pendente no momento.
-              </p>
-            )}
+              {overdueItems.length || todayItems.length || thisWeekItems.length || laterItems.length ? (
+                <div className="divide-y">
+                  <DeadlineGroupSection title="Atrasados" items={overdueItems} tone="danger" />
+                  <DeadlineGroupSection title="Vence hoje" items={todayItems} />
+                  <DeadlineGroupSection title="Esta semana" items={thisWeekItems} />
+                  <DeadlineGroupSection title="Mais tarde" items={laterItems} />
+                </div>
+              ) : (
+                <p className="text-muted-foreground px-5 py-8 text-center text-base">
+                  Nenhum prazo pendente no momento.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded-xl border">
+              <h2 className="px-5 pt-5 text-lg font-semibold tracking-tight">Atividade recente</h2>
+              <ActivityFeed events={events} />
+            </div>
           </div>
         </>
       ) : (
