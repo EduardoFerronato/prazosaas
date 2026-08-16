@@ -88,6 +88,7 @@ export async function syncDjenAction(): Promise<ActionResult<{ found: number }>>
   await db.user.update({ where: { id: session.user.id }, data: { djenLastSyncAt: today } })
 
   revalidatePath("/processos")
+  revalidatePath("/dashboard")
 
   return { success: true, data: { found: created } }
 }

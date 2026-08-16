@@ -3,14 +3,15 @@
 import { useState, useTransition } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Loader2, RefreshCw, X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { syncDjenAction, dismissDjenItemAction } from "@/modules/djen/actions"
+import { dismissDjenItemAction } from "@/modules/djen/actions"
 import { stripHtml } from "@/modules/djen/strip-html"
 import { ImportDjenItemDialog } from "@/modules/djen/components/import-djen-item-dialog"
+import { SyncDjenButton } from "@/modules/djen/components/sync-djen-button"
 import type { DjenImportListItem } from "@/modules/djen/queries"
 
 export function DjenPendingPanel({
@@ -22,25 +23,9 @@ export function DjenPendingPanel({
   members: { id: string; name: string }[]
   hasOab: boolean
 }) {
-  const [isSyncing, startSyncTransition] = useTransition()
   const [dismissingId, setDismissingId] = useState<string | null>(null)
   const [isDismissing, startDismissTransition] = useTransition()
   const [importingItem, setImportingItem] = useState<DjenImportListItem | null>(null)
-
-  function handleSync() {
-    startSyncTransition(async () => {
-      const result = await syncDjenAction()
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(
-        result.data.found > 0
-          ? `${result.data.found} nova(s) comunicação(ões) encontrada(s) no DJEN.`
-          : "Nenhuma novidade no DJEN desde a última busca."
-      )
-    })
-  }
 
   function handleDismiss(id: string) {
     setDismissingId(id)
@@ -64,14 +49,7 @@ export function DjenPendingPanel({
               : "Cadastre sua OAB em Configurações para buscar automaticamente."}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleSync} disabled={isSyncing || !hasOab}>
-          {isSyncing ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <RefreshCw className="size-4" />
-          )}
-          Buscar novidades
-        </Button>
+        <SyncDjenButton hasOab={hasOab} />
       </div>
 
       {items.length > 0 ? (

@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { isToday, isThisWeek, differenceInCalendarDays, format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Clock, AlertTriangle, CheckCircle2, Gauge, CalendarClock } from "lucide-react"
+import { Clock, AlertTriangle, CheckCircle2, Gauge, CalendarClock, Inbox, ArrowRight } from "lucide-react"
 
 import { getCurrentUser } from "@/modules/auth/queries"
 import {
@@ -12,6 +13,8 @@ import {
 import { listRecentEvents } from "@/modules/events/queries"
 import { listProcessOptions } from "@/modules/processes/queries"
 import { listOrganizationMembers } from "@/modules/organizations/queries"
+import { countPendingDjenImports } from "@/modules/djen/queries"
+import { SyncDjenButton } from "@/modules/djen/components/sync-djen-button"
 import { MetricCard } from "@/modules/dashboard/components/metric-card"
 import {
   DeadlineGroupSection,
@@ -27,15 +30,19 @@ function capitalize(text: string) {
 }
 
 export default async function DashboardPage() {
-  const [user, counts, upcoming, overdue, events, processes, members] = await Promise.all([
-    getCurrentUser(),
-    getDeadlineCounts(),
-    listUpcomingDeadlines(20),
-    listOverdueDeadlines(),
-    listRecentEvents(6),
-    listProcessOptions(),
-    listOrganizationMembers(),
-  ])
+  const [user, counts, upcoming, overdue, events, processes, members, pendingDjenCount] =
+    await Promise.all([
+      getCurrentUser(),
+      getDeadlineCounts(),
+      listUpcomingDeadlines(20),
+      listOverdueDeadlines(),
+      listRecentEvents(6),
+      listProcessOptions(),
+      listOrganizationMembers(),
+      countPendingDjenImports(),
+    ])
+
+  const hasOab = !!(user.oabNumber && user.oabUf)
 
   const hasAnyDeadline = counts.pending + counts.missed + counts.completed > 0
 
@@ -86,8 +93,27 @@ export default async function DashboardPage() {
             Olá, {user.name.split(" ")[0]}
           </h1>
         </div>
-        <NewDeadlineButton processes={processes} members={members} />
+        <div className="flex items-center gap-2">
+          <SyncDjenButton hasOab={hasOab} />
+          <NewDeadlineButton processes={processes} members={members} />
+        </div>
       </div>
+
+      {pendingDjenCount > 0 ? (
+        <Link
+          href="/processos"
+          className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50/60 px-5 py-3.5 transition-colors hover:bg-blue-50 dark:border-blue-500/25 dark:bg-blue-500/5 dark:hover:bg-blue-500/10"
+        >
+          <div className="flex items-center gap-3">
+            <Inbox className="size-4 text-blue-600 dark:text-blue-400" />
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+              {pendingDjenCount} comunicaç{pendingDjenCount === 1 ? "ão" : "ões"} do DJEN
+              aguardando revisão
+            </p>
+          </div>
+          <ArrowRight className="size-4 text-blue-600 dark:text-blue-400" />
+        </Link>
+      ) : null}
 
       {hasAnyDeadline ? (
         <>
